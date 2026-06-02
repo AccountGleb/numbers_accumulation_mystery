@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4&pi; cumulative-sum analysis</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Top toolbar -->
+<div class="toolbar">
+  <div class="menu-item">
+    <button class="tb-btn" id="rawDataBtn">Raw data</button>
+    <div class="dropdown" id="rawDataMenu">
+      <div class="dropdown-row" id="menuNewData">New data<span class="shortcut">open file&hellip;</span></div>
+    </div>
+  </div>
+  <div class="menu-item">
+    <button class="tb-btn" id="changeModeBtn">Change mode</button>
+    <div class="dropdown" id="modeMenu">
+      <div class="dropdown-row mode-row" data-mode="default">
+        <span class="check">&#10003;</span><span>Default increment</span></div>
+      <div class="dropdown-row mode-row" data-mode="quadratic">
+        <span class="check">&#10003;</span><span>Quadratic increment</span></div>
+      <div class="dropdown-row mode-row" data-mode="every2nd">
+        <span class="check">&#10003;</span><span>Increment of every 2nd</span></div>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept=".bin" style="display:none">
+  <span class="mode-indicator" id="modeIndicator">
+    <span class="mode-label">mode:</span> <span id="modeName">Default increment</span>
+  </span>
+</div>
+
+<!-- Source line -->
+<div class="sub" id="sourceLine"></div>
+
+<!-- Main content (everything below is rendered by app.js) -->
+<div id="content">
+  <!-- sequence panels -->
+  <div class="seq" id="rawSeqPanel" style="cursor:pointer" title="Click to edit any element by index">
+    <div class="lbl">First 100 digits (the values being accumulated) &middot; <span style="color:var(--accent)">click to edit an element</span></div>
+    <div class="vals" id="rawSeqVals"></div>
+  </div>
+  <div class="seq" id="cumSeqPanel">
+    <div class="lbl">First 100 cumulative-sum values</div>
+    <div class="vals" id="cumSeqVals"></div>
+  </div>
+
+  <!-- summary cards -->
+  <div class="cards" id="cards"></div>
+
+  <!-- raw randomness + k-summary row -->
+  <h2>Raw set randomness evaluation &amp; k-summary</h2>
+  <div class="statrow" id="statRow"></div>
+
+  <!-- cumsum dynamics chart -->
+  <div class="cumpanel">
+    <h3>Cumulative-sum dynamics (full sequence)</h3>
+    <div id="cumChartArea"></div>
+  </div>
+
+  <!-- main table + chart -->
+  <h2 style="display:inline-block;margin-right:14px">All k = 2..100</h2>
+  <button id="toggleMembers" class="btn">hide members</button>
+  <div class="note">Click a column header to sort. Click a row to plot its evolution.</div>
+  <div class="chartrow">
+    <div class="wrap">
+      <table id="ktab">
+        <colgroup>
+          <col style="width:10%"><col style="width:17%"><col style="width:13%">
+          <col style="width:12%"><col style="width:12%"><col style="width:12%">
+          <col style="width:12%"><col style="width:12%">
+        </colgroup>
+        <thead><tr>
+          <th data-col="0" data-type="n">k</th>
+          <th data-col="1" data-type="s">family</th>
+          <th data-col="2" data-type="n">avg|diff|</th>
+          <th data-col="3" data-type="n">exact%</th>
+          <th data-col="4" data-type="n" title="Tail stability: 1-std(last third)/std(all). Higher = converged.">R</th>
+          <th data-col="5" data-type="n" title="Mean error contraction ratio. <1 = contracting; smaller = faster.">r</th>
+          <th data-col="6" data-type="n" title="Power-law decay exponent: error ~ n^-p. Larger = faster.">p</th>
+          <th data-col="7" data-type="n">levels</th>
+        </tr></thead>
+        <tbody id="ktabBody"></tbody>
+      </table>
+    </div>
+    <div class="chartpanel">
+      <h3 id="chartTitle">Evolution</h3>
+      <div id="chartArea"><div class="hint">Click a row to plot the cumulative avg|diff| of that k over its own levels.</div></div>
+    </div>
+  </div>
+
+  <!-- AVG summary table -->
+  <table class="avgtable" id="avgTable">
+    <colgroup>
+      <col style="width:10%"><col style="width:17%"><col style="width:13%">
+      <col style="width:12%"><col style="width:12%"><col style="width:12%">
+      <col style="width:12%"><col style="width:12%">
+    </colgroup>
+    <thead><tr>
+      <th>k</th><th>family</th><th>avg|diff|</th><th>exact%</th>
+      <th>R</th><th>r</th><th>p</th><th>levels</th>
+    </tr></thead>
+    <tbody id="avgTableBody"></tbody>
+  </table>
+
+  <!-- collapsible k=6 detail -->
+  <details id="k6Details">
+    <summary id="detailSummary">Detailed: select a row above</summary>
+    <table id="k6Table"><thead><tr>
+      <th>n</th><th id="detailTargetHdr">k&middot;2^n</th><th>nearest</th><th>&plusmn;</th>
+    </tr></thead><tbody id="k6Body"></tbody></table>
+  </details>
+</div>
+
+<!-- Edit-by-index modal -->
+<div class="modal" id="editModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>Edit element by index</span>
+      <button class="modal-close" id="editClose">&times;</button>
+    </div>
+    <div class="modal-hint" id="editRange">Enter the index (id) of an element to look it up, then change and save.</div>
+    <div class="edit-form">
+      <div class="edit-field">
+        <label>Index (id)</label>
+        <div class="edit-row">
+          <input type="text" inputmode="numeric" id="idxInput" placeholder="e.g. 0">
+          <button class="btn" id="fetchBtn">Look up</button>
+        </div>
+      </div>
+      <div class="edit-field" id="valField" style="display:none">
+        <label>Current value &rarr; new value</label>
+        <div class="edit-row">
+          <span class="cur-val" id="curVal">&ndash;</span>
+          <span class="arrow">&rarr;</span>
+          <input type="text" inputmode="numeric" maxlength="1" id="valInput" placeholder="0-9">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="editCancel">Cancel</button>
+      <button class="btn btn-primary" id="editApply" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Processing overlay -->
+<div class="overlay" id="overlay">
+  <div class="overlay-box">
+    <div class="spinner"></div>
+    <div class="overlay-text" id="overlayText">Processing new file&hellip;</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

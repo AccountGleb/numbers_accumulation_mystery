@@ -1,0 +1,19 @@
+# Кэш и системные файлы Windows
+Thumbs.db
+Desktop.ini
+*.log
+
+# Папки редакторов и сред разработки
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.user
+
+# Если проект на Node.js / Python / C++ (закомментируй ненужное)
+node_modules/
+__pycache__/
+bin/
+obj/

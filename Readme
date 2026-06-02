@@ -1,0 +1,68 @@
+# 4π cumulative-sum analysis — web app
+
+Frontend/backend split. The backend computes; the frontend only renders.
+
+## Architecture
+
+```
+frontend/                 vanilla JS/HTML/CSS — no build step
+  index.html              DOM skeleton (populated by app.js)
+  style.css               all styles + processing overlay
+  app.js                  fetch → render tables/chart, upload, overlay
+
+backend/
+  app.py                  Flask: HTTP routes only, no math
+  requirements.txt
+  data/fourpi.bin         default dataset (loaded on startup)
+  core/                   the computation engine (swappable)
+    analysis.py           PURE functions: cumsum, k·2ⁿ, metrics, stats
+    engine.py             backend selector — the seam for a future C++ core
+    __init__.py
+```
+
+### The data contract
+
+Frontend and backend communicate over one JSON shape (the dict returned by
+`core.analysis.analyze`). The frontend never computes; it draws whatever the
+backend sends.
+
+```
+Frontend (JS)  <->  Flask (app.py)  <->  engine.py  ->  [ Python core ]
+                                                      \->  [ C++ binary ]  (future)
+```
+
+### Swapping in C++ later
+
+`engine.py` is the only file that knows *how* the analysis runs. To move the
+heavy number-crunching to C++, set `BACKEND = "cpp"` and implement `_run_cpp`
+(call a compiled binary via subprocess or a pybind11 module). The binary must
+emit the same JSON dict. Flask and the frontend stay untouched.
+
+## Run
+
+```bash
+cd backend
+pip install -r requirements.txt
+python app.py
+# open http://127.0.0.1:5000
+```
+
+On startup the app loads `backend/data/fourpi.bin`. Use the **Raw data → New
+data** toolbar menu to upload a different `.bin`.
+
+## Accepted input
+
+A `.bin` file that is a digit stream, auto-detected as either:
+- one byte per digit, values `0..9` (like `fourpi.bin`), or
+- ASCII digit characters `'0'..'9'` (bytes 48..57).
+
+Anything else is rejected with a clear error (HTTP 422).
+
+## API
+
+| Method | Path                    | Purpose                                  |
+|--------|-------------------------|------------------------------------------|
+| GET    | `/`                     | serve `index.html`                       |
+| GET    | `/<file>`               | serve frontend assets                    |
+| GET    | `/api/analyze/default`  | analyze bundled `fourpi.bin`             |
+| POST   | `/api/analyze`          | multipart upload, returns analysis JSON  |
