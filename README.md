@@ -1,4 +1,4 @@
-# nums — cumulative-sum structure explorer
+# nums — cumulative-sum structure explorer (read DESCRIPTION first)
 
 A web app for probing the hidden statistical structure of long digit sequences
 (the digits of 4π, π, or any digit stream) through their **cumulative sum**, and
