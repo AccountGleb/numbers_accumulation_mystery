@@ -5,6 +5,13 @@ const API = "";  // same origin
 let DATA = null; // last analysis result
 let chartState = null; // { full, opt, cutL, cutR } for trim feature
 let selectedMode = "default"; // current increment mode (persists before data loads)
+let currentAnalysis = "pow2";  // "pow2" (k*2^n) or "native" (k*n)
+
+// Return the active analysis block (pow2 or native) from DATA.
+function AB() {
+  if (DATA && DATA.analysis && DATA.analysis[currentAnalysis]) return DATA.analysis[currentAnalysis];
+  return DATA; // backward-compat fallback
+}
 
 /* ----------------------------- helpers ----------------------------------- */
 const $ = (id) => document.getElementById(id);
@@ -197,8 +204,8 @@ function renderCards(d) {
   $("cards").innerHTML = `
     <div class="card"><div class="lbl">max cumsum</div><div class="val">${d.max_val}</div></div>
     <div class="card"><div class="lbl">avg digit</div><div class="val">${d.avg_digit.toFixed(4)}</div></div>
-    <div class="card"><div class="lbl">mean exact%</div><div class="val">${d.stats.mean_e.toFixed(2)}%</div></div>
-    <div class="card"><div class="lbl">mean avg|diff|</div><div class="val">${d.stats.mean_d.toFixed(3)}</div></div>`;
+    <div class="card"><div class="lbl">mean exact%</div><div class="val">${AB().stats.mean_e.toFixed(2)}%</div></div>
+    <div class="card"><div class="lbl">mean avg|diff|</div><div class="val">${AB().stats.mean_d.toFixed(3)}</div></div>`;
 }
 
 function renderStatRow(d) {
@@ -227,7 +234,7 @@ function renderStatRow(d) {
     <tr><td>rarest digit</td><td>${rs.min_digit} (${rs.min_count})</td><td>&mdash;</td></tr>
     <tr><td>most common digit</td><td>${rs.max_digit} (${rs.max_count})</td><td>&mdash;</td></tr>`;
 
-  const s = d.stats;
+  const s = AB().stats;
   const ksumRows = `
     <tr><td>mean</td><td>${s.mean_d.toFixed(3)}</td><td>${s.mean_e.toFixed(2)}%</td></tr>
     <tr><td>median</td><td>${s.med_d.toFixed(3)}</td><td>${s.med_e.toFixed(2)}%</td></tr>
@@ -251,7 +258,7 @@ function renderStatRow(d) {
 
 function renderTable(d) {
   const body = $("ktabBody");
-  body.innerHTML = d.k_rows.map(row => {
+  body.innerHTML = AB().k_rows.map(row => {
     const tag = `<span class="tag ${row.family_cls}">${row.family}</span>`;
     const avgBg = gradBg(row.avg, 1.5, 1.0, false);
     const exBg = gradBg(row.exact, 22.22, 22.22, true);
@@ -270,9 +277,9 @@ function renderTable(d) {
       const ar = document.querySelector("#avgTable .avgrow"); if (ar) ar.classList.remove("selected");
       tr.classList.add("selected");
       const k = tr.getAttribute("data-k");
-      drawChart(DATA.k_evolution[k] || [], {
+      drawChart(AB().k_evolution[k] || [], {
         title: `Evolution of k = ${k} (cumulative avg|diff| over its levels)`,
-        xlabel: "target = k·2^n", isAvg: false
+        xlabel: currentAnalysis === "native" ? "target = k·n" : "target = k·2^n", isAvg: false
       });
       renderDetail(k);
     });
@@ -280,7 +287,7 @@ function renderTable(d) {
 }
 
 function renderAvgTable(d) {
-  const s = d.stats;
+  const s = AB().stats;
   const avgBg = gradBg(s.mean_d, 1.5, 1.0, false);
   const exBg = gradBg(s.mean_e, 22.22, 22.22, true);
   const body = $("avgTableBody");
@@ -293,16 +300,19 @@ function renderAvgTable(d) {
   body.rows[0].addEventListener("click", () => {
     [...$("ktabBody").rows].forEach(r => r.classList.remove("selected"));
     body.rows[0].classList.add("selected");
-    const data = DATA.avg_evolution.map((v, i) => [i, v, 0]);
+    const data = AB().avg_evolution.map((v, i) => [i, v, 0]);
     drawChart(data, { title: "Evolution of AVG (mean cumulative avg|diff| across all k)", xlabel: "level n", isAvg: true });
   });
 }
 
 function renderDetail(k) {
-  const rows = (DATA.k_detail && DATA.k_detail[String(k)]) || [];
+  const blk = AB();
+  const rows = (blk.k_detail && blk.k_detail[String(k)]) || [];
   const fmtd = (x) => x === 0 ? "EXACT" : (x > 0 ? "+" + x : "" + x);
-  $("detailSummary").innerHTML = `Detailed: k = ${k} &nbsp;(${k}&middot;2<sup>n</sup>)`;
-  $("detailTargetHdr").innerHTML = `${k}&middot;2^n`;
+  const isNative = currentAnalysis === "native";
+  const tgtLabel = isNative ? `${k}&middot;n` : `${k}&middot;2<sup>n</sup>`;
+  $("detailSummary").innerHTML = `Detailed: k = ${k} &nbsp;(${tgtLabel})`;
+  $("detailTargetHdr").innerHTML = isNative ? `${k}&middot;n` : `${k}&middot;2^n`;
   $("k6Body").innerHTML = rows.map(r =>
     `<tr class="${r.diff === 0 ? "exact" : ""}"><td>${r.n}</td><td>${r.target}</td><td>${r.nearest}</td><td>${fmtd(r.diff)}</td></tr>`
   ).join("") || '<tr><td colspan="4" style="text-align:left;color:var(--muted)">No data for this k.</td></tr>';
@@ -409,7 +419,7 @@ function renderChart() {
   const xs = data.map(d => d[0]), ys = data.map(d => d[1]);
   const avgSlice = [];
   // align AVG reference to the same (trimmed) level window
-  if (!opt.isAvg) for (let i = chartState.cutL; i < full.length - chartState.cutR && i < DATA.avg_evolution.length; i++) avgSlice.push(DATA.avg_evolution[i]);
+  if (!opt.isAvg) for (let i = chartState.cutL; i < full.length - chartState.cutR && i < AB().avg_evolution.length; i++) avgSlice.push(AB().avg_evolution[i]);
   const allY = ys.concat(avgSlice);
   let xmin = Math.min(...xs), xmax = Math.max(...xs);
   let ymin = Math.min(...allY), ymax = Math.max(...allY);
@@ -442,8 +452,8 @@ function renderChart() {
     let ap = "", aN = 0;
     for (let i = 0; i < data.length; i++) {
       const ai = chartState.cutL + i;
-      if (ai >= DATA.avg_evolution.length) break;
-      ap += (aN ? " L" : "M") + X(data[i][0]).toFixed(1) + " " + Y(DATA.avg_evolution[ai]).toFixed(1); aN++;
+      if (ai >= AB().avg_evolution.length) break;
+      ap += (aN ? " L" : "M") + X(data[i][0]).toFixed(1) + " " + Y(AB().avg_evolution[ai]).toFixed(1); aN++;
     }
     if (aN > 1) s += `<path d="${ap}" fill="none" stroke="#5a6473" stroke-width="1.5" stroke-dasharray="5 4"/>`;
   }
@@ -535,6 +545,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (f) uploadFile(f);
   });
   document.addEventListener("click", () => $("rawDataMenu").classList.remove("open"));
+
+  // analysis toggle: pow2 <-> native (both precomputed; instant switch)
+  $("analysisToggle").addEventListener("click", () => {
+    currentAnalysis = currentAnalysis === "pow2" ? "native" : "pow2";
+    $("analysisToggle").classList.toggle("native", currentAnalysis === "native");
+    $("analysisToggle").textContent = currentAnalysis === "native" ? "Native analysis ✓" : "Native analysis";
+    if (DATA) renderAll(DATA);
+  });
 
   // change-mode menu
   $("changeModeBtn").addEventListener("click", (e) => {
